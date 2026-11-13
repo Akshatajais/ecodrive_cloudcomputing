@@ -1,8 +1,11 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
 import '../models/history_point.dart';
 import '../providers/driver_score_provider.dart';
 
@@ -16,18 +19,20 @@ class GraphsScreen extends StatefulWidget {
 }
 
 class _GraphsScreenState extends State<GraphsScreen> {
+  static const _greenTop = Color(0xFFE8F5E9);
+  static const _greenMid = Color(0xFFF1F8E9);
+  static const _greenBottom = Color(0xFFFAFDF7);
+  static const _textPrimary = Color(0xFF1B5E20);
+  static const _textSecondary = Color(0xFF558B2F);
+
   TimeFilter _filter = TimeFilter.day;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<DriverScoreProvider>(context, listen: false).fetchHistory();
+      context.read<DriverScoreProvider>().fetchHistory();
     });
-  }
-
-  void _setFilter(TimeFilter filter) {
-    setState(() => _filter = filter);
   }
 
   Duration get _filterDuration {
@@ -41,10 +46,20 @@ class _GraphsScreenState extends State<GraphsScreen> {
     }
   }
 
+  String get _filterLabel {
+    switch (_filter) {
+      case TimeFilter.hour:
+        return 'Last 1 hour';
+      case TimeFilter.day:
+        return 'Last 24 hours';
+      case TimeFilter.week:
+        return 'Last 7 days';
+    }
+  }
+
   List<HistoryPoint> _filteredHistory(List<HistoryPoint> history) {
     if (history.isEmpty) return history;
-    final now = DateTime.now();
-    final cutoff = now.subtract(_filterDuration);
+    final cutoff = DateTime.now().subtract(_filterDuration);
     final filtered =
         history.where((point) => point.timestamp.isAfter(cutoff)).toList();
     filtered.sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -61,350 +76,673 @@ class _GraphsScreenState extends State<GraphsScreen> {
     );
   }
 
-  Widget _buildTimeFilter() {
-    return Center(
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _buildChip('Last 1 hr', TimeFilter.hour),
-          _buildChip('Last 24 hrs', TimeFilter.day),
-          _buildChip('Last 7 days', TimeFilter.week),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChip(String label, TimeFilter filter) {
-    final isSelected = _filter == filter;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => _setFilter(filter),
-      selectedColor: Colors.green[200],
-    );
-  }
-
-  Widget _buildSingleChart({
-    required String title,
-    required List<HistoryPoint> data,
-    required List<FlSpot> spots,
-    required Color color,
-    required double minY,
-    required double maxY,
-    required String unit,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 2,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 220,
-            child: spots.isEmpty
-                ? Center(
-                    child: Text(
-                      'No data in selected range',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  )
-                : LineChart(
-                    LineChartData(
-                      minX: 0,
-                      maxX: (spots.length - 1).toDouble().clamp(0, double.infinity),
-                      minY: minY,
-                      maxY: maxY,
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: (maxY - minY) / 4,
-                        getDrawingHorizontalLine: (value) => FlLine(
-                          color: Colors.grey[200]!,
-                          strokeWidth: 1,
-                        ),
-                      ),
-                      titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 40,
-                            getTitlesWidget: (value, meta) => Text(
-                              '${value.toInt()}$unit',
-                              style: TextStyle(color: Colors.grey[600], fontSize: 10),
-                            ),
-                          ),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 32,
-                            interval: spots.length <= 1 ? 1 : (spots.length / 4),
-                            getTitlesWidget: (value, meta) {
-                              final index = value.round();
-                              if (index >= 0 && index < data.length) {
-                                return Text(
-                                  DateFormat('MMM d\nHH:mm').format(data[index].timestamp),
-                                  style: TextStyle(color: Colors.grey[600], fontSize: 10),
-                                  textAlign: TextAlign.center,
-                                );
-                              }
-                              return const SizedBox.shrink();
-                            },
-                          ),
-                        ),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: spots,
-                          isCurved: true,
-                          color: color,
-                          barWidth: 3,
-                          dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: color.withOpacity(0.15),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDualChart({
-    required String title,
-    required List<HistoryPoint> data,
-    required List<FlSpot> rawGasSpots,
-    required List<FlSpot> temperatureSpots,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 2,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Raw Gas (ppm) & Temperature (°C)',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 240,
-            child: rawGasSpots.isEmpty
-                ? Center(
-                    child: Text(
-                      'No data in selected range',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  )
-                : LineChart(
-                    LineChartData(
-                      minX: 0,
-                      maxX: (rawGasSpots.length - 1)
-                          .toDouble()
-                          .clamp(0, double.infinity),
-                      minY: 0,
-                      maxY:  _dualMax(rawGasSpots, temperatureSpots),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        getDrawingHorizontalLine: (value) => FlLine(
-                          color: Colors.grey[200]!,
-                          strokeWidth: 1,
-                        ),
-                      ),
-                      titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 40,
-                            getTitlesWidget: (value, meta) => Text(
-                              value.toInt().toString(),
-                              style: TextStyle(color: Colors.grey[600], fontSize: 10),
-                            ),
-                          ),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 32,
-                            interval: rawGasSpots.length <= 1
-                                ? 1
-                                : (rawGasSpots.length / 4),
-                            getTitlesWidget: (value, meta) {
-                              final index = value.round();
-                              if (index >= 0 && index < data.length) {
-                                return Text(
-                                  DateFormat('MMM d\nHH:mm')
-                                      .format(data[index].timestamp),
-                                  style:
-                                      TextStyle(color: Colors.grey[600], fontSize: 10),
-                                  textAlign: TextAlign.center,
-                                );
-                              }
-                              return const SizedBox.shrink();
-                            },
-                          ),
-                        ),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      lineBarsData: [
-                        _buildLine(rawGasSpots, Colors.deepPurple),
-                        _buildLine(
-                          temperatureSpots,
-                          Colors.orange,
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  LineChartBarData _buildLine(
-    List<FlSpot> spots,
-    Color color,
-  ) {
-    return LineChartBarData(
-      spots: spots,
-      isCurved: true,
-      color: color,
-      barWidth: 3,
-      dotData: const FlDotData(show: false),
-      belowBarData: BarAreaData(
-        show: true,
-        color: color.withOpacity(0.1),
-      ),
-    );
-  }
-
   double _maxValue(List<FlSpot> spots) {
     if (spots.isEmpty) return 0;
-    return spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    return spots.map((s) => s.y).reduce(math.max);
+  }
+
+  double _avgValue(List<FlSpot> spots) {
+    if (spots.isEmpty) return 0;
+    final sum = spots.fold<double>(0, (a, b) => a + b.y);
+    return sum / spots.length;
   }
 
   double _dualMax(List<FlSpot> a, List<FlSpot> b) {
     final value = math.max(_maxValue(a), _maxValue(b));
     if (value == 0) return 10;
-    return value * 1.1;
+    return value * 1.15;
+  }
+
+  LineChartBarData _line(List<FlSpot> spots, Color color, {double fill = 0.14}) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: true,
+      color: color,
+      barWidth: 3,
+      isStrokeCapRound: true,
+      dotData: FlDotData(
+        show: spots.length <= 12,
+        getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+          radius: 3,
+          color: color,
+          strokeWidth: 1.5,
+          strokeColor: Colors.white,
+        ),
+      ),
+      belowBarData: BarAreaData(
+        show: true,
+        color: color.withValues(alpha: fill),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          'Analytics & Graphs',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.green[600],
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              Provider.of<DriverScoreProvider>(context, listen: false)
-                  .fetchHistory();
-            },
-            tooltip: 'Refresh',
+      backgroundColor: _greenBottom,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [_greenTop, _greenMid, _greenBottom],
+            stops: [0.0, 0.45, 1.0],
           ),
-        ],
-      ),
-      body: Consumer<DriverScoreProvider>(
-        builder: (context, provider, child) {
-          final filtered = _filteredHistory(provider.history);
-          final emissionSpots = _buildSpots(filtered, (point) => point.emissionScore);
-          final rawGasSpots = _buildSpots(filtered, (point) => point.rawGas);
-          final tempSpots = _buildSpots(filtered, (point) => point.temperature);
+        ),
+        child: SafeArea(
+          child: Consumer<DriverScoreProvider>(
+            builder: (context, provider, _) {
+              final filtered = _filteredHistory(provider.history);
+              final emissionSpots =
+                  _buildSpots(filtered, (p) => p.emissionScore);
+              final rawGasSpots = _buildSpots(filtered, (p) => p.rawGas);
+              final tempSpots = _buildSpots(filtered, (p) => p.temperature);
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              await provider.fetchHistory();
+              return RefreshIndicator(
+                color: _textPrimary,
+                backgroundColor: Colors.white,
+                onRefresh: () => provider.fetchHistory(),
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Graphs',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      color: _textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Emission trends over time',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: _textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Material(
+                              color: Colors.white,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: () => provider.fetchHistory(),
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: const Color(0xFFC8E6C9),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.refresh_rounded,
+                                    color: Color(0xFF2E7D32),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          _FilterRow(
+                            selected: _filter,
+                            onChanged: (f) => setState(() => _filter = f),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SummaryTile(
+                                  label: 'Points',
+                                  value: '${filtered.length}',
+                                  icon: Icons.timeline_rounded,
+                                  accent: const Color(0xFF2E7D32),
+                                  soft: const Color(0xFFE8F5E9),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _SummaryTile(
+                                  label: 'Avg score',
+                                  value: emissionSpots.isEmpty
+                                      ? '--'
+                                      : _avgValue(emissionSpots)
+                                          .toStringAsFixed(0),
+                                  icon: Icons.speed_rounded,
+                                  accent: const Color(0xFF43A047),
+                                  soft: const Color(0xFFE8F5E9),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _SummaryTile(
+                                  label: 'Peak gas',
+                                  value: rawGasSpots.isEmpty
+                                      ? '--'
+                                      : _maxValue(rawGasSpots)
+                                          .toStringAsFixed(0),
+                                  icon: Icons.air_rounded,
+                                  accent: const Color(0xFF039BE5),
+                                  soft: const Color(0xFFE1F5FE),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          _ChartCard(
+                            title: 'Emission Score',
+                            subtitle: _filterLabel,
+                            legends: const [
+                              _Legend(color: Color(0xFF43A047), label: 'Score'),
+                            ],
+                            child: _EmissionChart(
+                              data: filtered,
+                              spots: emissionSpots,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _ChartCard(
+                            title: 'Raw Gas & Temperature',
+                            subtitle: 'ppm and °C over $_filterLabel',
+                            legends: const [
+                              _Legend(
+                                color: Color(0xFF2E7D32),
+                                label: 'Raw Gas',
+                              ),
+                              _Legend(
+                                color: Color(0xFFFB8C00),
+                                label: 'Temp',
+                              ),
+                            ],
+                            child: _DualChart(
+                              data: filtered,
+                              rawGasSpots: rawGasSpots,
+                              temperatureSpots: tempSpots,
+                              dualMax: _dualMax(rawGasSpots, tempSpots),
+                              buildLine: _line,
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ],
+                ),
+              );
             },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTimeFilter(),
-                  const SizedBox(height: 16),
-                  _buildSingleChart(
-                    title: 'Emission Score vs Time',
-                    data: filtered,
-                    spots: emissionSpots,
-                    color: Colors.green,
-                    minY: 0,
-                    maxY: 500,
-                    unit: '',
-                  ),
-                  _buildDualChart(
-                    title: 'Raw Gas & Temperature',
-                    data: filtered,
-                    rawGasSpots: rawGasSpots,
-                    temperatureSpots: tempSpots,
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 }
 
+class _FilterRow extends StatelessWidget {
+  const _FilterRow({required this.selected, required this.onChanged});
+
+  final TimeFilter selected;
+  final ValueChanged<TimeFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (TimeFilter.hour, '1 hr'),
+      (TimeFilter.day, '24 hrs'),
+      (TimeFilter.week, '7 days'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFC8E6C9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: items.map((item) {
+          final isSelected = selected == item.$1;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(item.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF2E7D32)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  item.$2,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected
+                        ? Colors.white
+                        : const Color(0xFF558B2F),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _SummaryTile extends StatelessWidget {
+  const _SummaryTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.accent,
+    required this.soft,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color accent;
+  final Color soft;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: soft,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: accent, size: 16),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1B5E20),
+              height: 1.1,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Legend {
+  const _Legend({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+}
+
+class _ChartCard extends StatelessWidget {
+  const _ChartCard({
+    required this.title,
+    required this.subtitle,
+    required this.legends,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<_Legend> legends;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE8F5E9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.09),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1B5E20),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF558B2F),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: legends
+                .map(
+                  (l) => Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: l.color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: l.color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          l.label,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: l.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(height: 220, child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyChart extends StatelessWidget {
+  const _EmptyChart();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE8F5E9),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.show_chart_rounded,
+              color: Color(0xFF66BB6A),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No data in this range',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF558B2F),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+FlTitlesData _titles(List<HistoryPoint> data, {String unit = ''}) {
+  return FlTitlesData(
+    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    leftTitles: AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        reservedSize: 36,
+        getTitlesWidget: (value, meta) => Text(
+          '${value.toInt()}$unit',
+          style: GoogleFonts.poppins(
+            color: Colors.grey[500],
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    ),
+    bottomTitles: AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        reservedSize: 30,
+        interval: data.length <= 1 ? 1 : (data.length / 4).ceilToDouble(),
+        getTitlesWidget: (value, meta) {
+          final index = value.round();
+          if (index < 0 || index >= data.length) {
+            return const SizedBox.shrink();
+          }
+          return Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              DateFormat('HH:mm').format(data[index].timestamp),
+              style: GoogleFonts.poppins(
+                color: Colors.grey[500],
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _EmissionChart extends StatelessWidget {
+  const _EmissionChart({required this.data, required this.spots});
+
+  final List<HistoryPoint> data;
+  final List<FlSpot> spots;
+
+  @override
+  Widget build(BuildContext context) {
+    if (spots.isEmpty) return const _EmptyChart();
+
+    return LineChart(
+      LineChartData(
+        minX: 0,
+        maxX: (spots.length - 1).toDouble().clamp(0, double.infinity),
+        minY: 0,
+        maxY: 500,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 125,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: const Color(0xFFE8F5E9),
+            strokeWidth: 1,
+          ),
+        ),
+        titlesData: _titles(data),
+        borderData: FlBorderData(show: false),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => const Color(0xFF1B5E20),
+            getTooltipItems: (touched) => touched
+                .map(
+                  (t) => LineTooltipItem(
+                    t.y.toStringAsFixed(0),
+                    GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: const Color(0xFF43A047),
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: FlDotData(
+              show: spots.length <= 12,
+              getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+                radius: 3,
+                color: const Color(0xFF43A047),
+                strokeWidth: 1.5,
+                strokeColor: Colors.white,
+              ),
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF43A047).withValues(alpha: 0.28),
+                  const Color(0xFF43A047).withValues(alpha: 0.02),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DualChart extends StatelessWidget {
+  const _DualChart({
+    required this.data,
+    required this.rawGasSpots,
+    required this.temperatureSpots,
+    required this.dualMax,
+    required this.buildLine,
+  });
+
+  final List<HistoryPoint> data;
+  final List<FlSpot> rawGasSpots;
+  final List<FlSpot> temperatureSpots;
+  final double dualMax;
+  final LineChartBarData Function(List<FlSpot>, Color, {double fill}) buildLine;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rawGasSpots.isEmpty) return const _EmptyChart();
+
+    return LineChart(
+      LineChartData(
+        minX: 0,
+        maxX: (rawGasSpots.length - 1).toDouble().clamp(0, double.infinity),
+        minY: 0,
+        maxY: dualMax,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: const Color(0xFFE8F5E9),
+            strokeWidth: 1,
+          ),
+        ),
+        titlesData: _titles(data),
+        borderData: FlBorderData(show: false),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => const Color(0xFF1B5E20),
+            getTooltipItems: (touched) => touched
+                .map(
+                  (t) => LineTooltipItem(
+                    t.y.toStringAsFixed(1),
+                    GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        lineBarsData: [
+          buildLine(rawGasSpots, const Color(0xFF2E7D32)),
+          buildLine(temperatureSpots, const Color(0xFFFB8C00), fill: 0.08),
+        ],
+      ),
+    );
+  }
+}
