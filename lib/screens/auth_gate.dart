@@ -27,10 +27,10 @@ class _AuthGateState extends State<AuthGate> {
     return Consumer<AuthProvider>(
       builder: (context, auth, _) {
         if (auth.isLoading) {
-          return Scaffold(
-            backgroundColor: Colors.green[600],
-            body: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
+          return const Scaffold(
+            backgroundColor: Color(0xFFEAF6E0),
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
             ),
           );
         }

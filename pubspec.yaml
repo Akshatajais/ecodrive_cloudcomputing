@@ -32,6 +32,7 @@ flutter:
 
   assets:
     - lib/assets/logo.png
+    - lib/assets/auth_background.jpg
     - ML/models/driver_model.tflite
     - ML/models/vehicle_model.tflite
     - ML/models/driver_classes.txt
