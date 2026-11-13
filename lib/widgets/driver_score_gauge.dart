@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:syncfusion_flutter_gauges/gauges.dart';
 
 class DriverScoreGauge extends StatelessWidget {
@@ -13,153 +14,169 @@ class DriverScoreGauge extends StatelessWidget {
     this.isLoading = false,
   });
 
-  Color _getColorForScore(double score) {
-    if (score <= 150) return Colors.green;
-    if (score <= 300) return Colors.orange;
-    return Colors.red;
+  Color _statusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'GOOD':
+        return const Color(0xFF43A047);
+      case 'MODERATE':
+        return const Color(0xFFFF9800);
+      default:
+        return const Color(0xFFE53935);
+    }
   }
-
 
   @override
   Widget build(BuildContext context) {
-    final color = _getColorForScore(score);
+    final badgeColor = _statusColor(status);
+    final clamped = score.clamp(0.0, 500.0);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Stack(
-            alignment: Alignment.bottomCenter,
-            clipBehavior: Clip.none,
-            children: [
-              SizedBox(
-                height: 280,
-                width: 320,
-                child: SfRadialGauge(
-                  axes: <RadialAxis>[
-                    RadialAxis(
-                      minimum: 0,
-                      maximum: 500,
-                      showLabels: false,
-                      showTicks: false,
-                      startAngle: 180,
-                      endAngle: 0,
-                      radiusFactor: 0.95,
-                      axisLineStyle: const AxisLineStyle(
-                        thickness: 0.15,
-                        thicknessUnit: GaugeSizeUnit.factor,
-                        color: Colors.grey,
-                      ),
-                      ranges: <GaugeRange>[
-                        GaugeRange(
-                          startValue: 0,
-                          endValue: 150,
-                          color: Colors.green,
-                          startWidth: 0.15,
-                          endWidth: 0.15,
-                          sizeUnit: GaugeSizeUnit.factor,
-                        ),
-                        GaugeRange(
-                          startValue: 150,
-                          endValue: 300,
-                          color: Colors.orange,
-                          startWidth: 0.15,
-                          endWidth: 0.15,
-                          sizeUnit: GaugeSizeUnit.factor,
-                        ),
-                        GaugeRange(
-                          startValue: 300,
-                          endValue: 500,
-                          color: Colors.red,
-                          startWidth: 0.15,
-                          endWidth: 0.15,
-                          sizeUnit: GaugeSizeUnit.factor,
-                        ),
-                      ],
-                      pointers: <GaugePointer>[
-                        NeedlePointer(
-                          value: score,
-                          enableAnimation: true,
-                          animationDuration: 1200,
-                          knobStyle: KnobStyle(
-                            color: color,
-                            knobRadius: 0.06,
-                          ),
-                          needleColor: color,
-                          tailStyle: TailStyle(color: color, width: 4, length: 0.18),
-                        ),
-                      ],
-                      annotations: isLoading
-                          ? <GaugeAnnotation>[
-                              GaugeAnnotation(
-                                widget: const SizedBox(
-                                  width: 40,
-                                  height: 40,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                  ),
-                                ),
-                                positionFactor: 0.0,
-                              ),
-                            ]
-                          : const <GaugeAnnotation>[],
-                    ),
-                  ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 155,
+          width: double.infinity,
+          child: SfRadialGauge(
+            axes: <RadialAxis>[
+              RadialAxis(
+                minimum: 0,
+                maximum: 500,
+                startAngle: 180,
+                endAngle: 0,
+                showTicks: false,
+                showLabels: true,
+                labelsPosition: ElementsPosition.outside,
+                labelOffset: 10,
+                canScaleToFit: true,
+                radiusFactor: 0.98,
+                interval: 500,
+                axisLabelStyle: const GaugeTextStyle(
+                  color: Color(0xFF2E7D32),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
-              ),
-              if (!isLoading)
-                Positioned(
-                  bottom: 50,
-                  child: Text(
-                    score.toStringAsFixed(0),
-                    style: TextStyle(
-                      fontSize: 72,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                      height: 1.0,
-                      letterSpacing: -1,
-                    ),
-                    textAlign: TextAlign.center,
+                axisLineStyle: const AxisLineStyle(
+                  thickness: 0.2,
+                  thicknessUnit: GaugeSizeUnit.factor,
+                  color: Color(0xFFE8F5E9),
+                ),
+                ranges: <GaugeRange>[
+                  GaugeRange(
+                    startValue: 0,
+                    endValue: 125,
+                    color: const Color(0xFF66BB6A),
+                    startWidth: 0.2,
+                    endWidth: 0.2,
+                    sizeUnit: GaugeSizeUnit.factor,
                   ),
-                ),
-            ],
-          ),
-          if (!isLoading) ...[
-            const SizedBox(height: 5),
-
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: color.withOpacity(0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                  GaugeRange(
+                    startValue: 125,
+                    endValue: 250,
+                    color: const Color(0xFFFFEB3B),
+                    startWidth: 0.2,
+                    endWidth: 0.2,
+                    sizeUnit: GaugeSizeUnit.factor,
+                  ),
+                  GaugeRange(
+                    startValue: 250,
+                    endValue: 375,
+                    color: const Color(0xFFFF9800),
+                    startWidth: 0.2,
+                    endWidth: 0.2,
+                    sizeUnit: GaugeSizeUnit.factor,
+                  ),
+                  GaugeRange(
+                    startValue: 375,
+                    endValue: 500,
+                    color: const Color(0xFFE53935),
+                    startWidth: 0.2,
+                    endWidth: 0.2,
+                    sizeUnit: GaugeSizeUnit.factor,
+                  ),
+                ],
+                pointers: <GaugePointer>[
+                  NeedlePointer(
+                    value: clamped,
+                    enableAnimation: true,
+                    animationDuration: 900,
+                    needleLength: 0.62,
+                    needleStartWidth: 1,
+                    needleEndWidth: 5,
+                    needleColor: const Color(0xFF1B5E20),
+                    knobStyle: const KnobStyle(
+                      color: Color(0xFF2E7D32),
+                      knobRadius: 0.08,
+                      borderColor: Colors.white,
+                      borderWidth: 0.025,
+                    ),
+                    tailStyle: const TailStyle(
+                      length: 0.14,
+                      width: 4,
+                      color: Color(0xFF81C784),
+                    ),
                   ),
                 ],
               ),
-              child: Text(
-                status,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                  letterSpacing: 1.1,
-                ),
+            ],
+          ),
+        ),
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Color(0xFF2E7D32),
               ),
             ),
-          ],
+          )
+        else ...[
+          Text(
+            'Emission Level',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF558B2F),
+            ),
+          ),
+          Text(
+            clamped.toStringAsFixed(0),
+            style: GoogleFonts.poppins(
+              fontSize: 42,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1B5E20),
+              height: 1.05,
+              letterSpacing: -1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+            decoration: BoxDecoration(
+              color: badgeColor,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: badgeColor.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Text(
+              status.toUpperCase(),
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ),
         ],
-      ),
+      ],
     );
   }
 }
-
