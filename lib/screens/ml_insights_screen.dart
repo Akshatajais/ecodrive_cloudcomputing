@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../providers/driver_score_provider.dart';
 import '../models/history_point.dart';
+import '../providers/driver_score_provider.dart';
 import '../services/ml_insights_service.dart';
 
 class MlInsightsScreen extends StatefulWidget {
@@ -16,6 +16,12 @@ class MlInsightsScreen extends StatefulWidget {
 }
 
 class _MlInsightsScreenState extends State<MlInsightsScreen> {
+  static const _greenTop = Color(0xFFE8F5E9);
+  static const _greenMid = Color(0xFFF1F8E9);
+  static const _greenBottom = Color(0xFFFAFDF7);
+  static const _textPrimary = Color(0xFF1B5E20);
+  static const _textSecondary = Color(0xFF558B2F);
+
   final MlInsightsService _ml = MlInsightsService();
   Future<void>? _initFuture;
 
@@ -32,13 +38,9 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
     super.initState();
     _initFuture = _ml.init();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Pull some historical data early so the ML page can analyze immediately.
-      // Live Firebase updates (from the Python data generator) keep filling the buffer.
       try {
         await context.read<DriverScoreProvider>().fetchHistory();
-      } catch (_) {
-        // Ignore history fetch failures; the page can still work from live points.
-      }
+      } catch (_) {}
     });
   }
 
@@ -85,315 +87,26 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _running = false;
-      });
+      if (mounted) {
+        setState(() => _running = false);
+      }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          'Insights',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.green[600],
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Consumer<DriverScoreProvider>(
-        builder: (context, provider, _) {
-          final history = provider.history;
-          _scheduleRun(history);
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              await provider.fetchHistory();
-              await _run(provider.history);
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeroCard(
-                    theme: theme,
-                    lastSource: provider.lastRealtimeSource,
-                    lastArrival: provider.lastRealtimeArrival,
-                    score: provider.driverScore,
-                    rawGas: provider.rawGas,
-                    temperature: provider.temperature,
-                    humidity: provider.humidity,
-                    status: provider.status,
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSectionHeader(
-                    icon: Icons.psychology,
-                    title: 'ML Insights (on-device)',
-                    subtitle: 'Based on the last ~80 readings',
-                  ),
-                  const SizedBox(height: 12),
-                  if (_error != null) ...[
-                    _buildErrorCard(_error!),
-                    const SizedBox(height: 12),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _PredictionCard(
-                          title: 'Driver behavior',
-                          icon: Icons.directions_car,
-                          accent: Colors.green,
-                          prediction: _driver,
-                          isRunning: _running,
-                          emptyHint: history.length < 20
-                              ? 'Need ${20 - history.length} more readings to analyze.'
-                              : 'Analyzing…',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _PredictionCard(
-                          title: 'Vehicle health',
-                          icon: Icons.health_and_safety,
-                          accent: Colors.blueGrey,
-                          prediction: _vehicle,
-                          isRunning: _running,
-                          emptyHint: history.length < 20
-                              ? 'Need ${20 - history.length} more readings to analyze.'
-                              : 'Analyzing…',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSectionHeader(
-                    icon: Icons.lightbulb_outline,
-                    title: 'Suggested actions',
-                    subtitle: 'Personalized based on live data',
-                  ),
-                  const SizedBox(height: 12),
-                  _buildRecommendations(
-                    driver: _driver,
-                    vehicle: _vehicle,
-                    score: provider.driverScore,
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
+  Color _statusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'GOOD':
+        return const Color(0xFF43A047);
+      case 'MODERATE':
+        return const Color(0xFFFF9800);
+      default:
+        return const Color(0xFFE53935);
+    }
   }
 
-  Widget _buildHeroCard({
-    required ThemeData theme,
-    required String lastSource,
-    required DateTime? lastArrival,
-    required double score,
-    required double rawGas,
-    required double temperature,
-    required double humidity,
-    required String status,
-  }) {
-    final color = Colors.green[600]!;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.85)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.25),
-            spreadRadius: 2,
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.insights, color: Colors.white, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Live summary',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Source: $lastSource'
-                      '${lastArrival == null ? '' : ' • ${_timeAgo(lastArrival)}'}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  status,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: _MetricPill(
-                  label: 'Emission score',
-                  value: score.toStringAsFixed(0),
-                  unit: '',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MetricPill(
-                  label: 'Raw gas',
-                  value: rawGas.toStringAsFixed(0),
-                  unit: 'ppm',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _MetricPill(
-                  label: 'Temp',
-                  value: temperature.toStringAsFixed(1),
-                  unit: '°C',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MetricPill(
-                  label: 'Humidity',
-                  value: humidity.toStringAsFixed(0),
-                  unit: '%',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.green[50],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: Colors.green[700], size: 22),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildErrorCard(String message) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.withOpacity(0.15)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.red),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: GoogleFonts.poppins(fontSize: 13, color: Colors.red[800]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecommendations({
+  List<_Recommendation> _recommendations({
     required MlPrediction? driver,
     required MlPrediction? vehicle,
     required double score,
@@ -405,25 +118,28 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
       if (label.contains('aggressive')) {
         items.add(
           const _Recommendation(
-            icon: Icons.speed,
+            icon: Icons.speed_rounded,
             title: 'Smooth acceleration',
-            body: 'Gradual throttle inputs can reduce spikes and improve efficiency.',
+            body:
+                'Gradual throttle inputs can reduce spikes and improve efficiency.',
           ),
         );
       } else if (label.contains('idle')) {
         items.add(
           const _Recommendation(
-            icon: Icons.timer,
+            icon: Icons.timer_outlined,
             title: 'Reduce idling',
-            body: 'Turn off the engine during long stops to reduce emissions.',
+            body:
+                'Turn off the engine during long stops to reduce emissions.',
           ),
         );
       } else if (label.contains('eco')) {
         items.add(
           const _Recommendation(
-            icon: Icons.eco,
+            icon: Icons.eco_rounded,
             title: 'Keep it up',
-            body: 'Your driving pattern looks efficient—maintain steady speed where possible.',
+            body:
+                'Your driving pattern looks efficient — maintain steady speed where possible.',
           ),
         );
       }
@@ -434,17 +150,19 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
       if (label.contains('critical')) {
         items.add(
           const _Recommendation(
-            icon: Icons.build_circle,
+            icon: Icons.build_circle_outlined,
             title: 'Service recommended',
-            body: 'Model indicates possible vehicle health issues—consider a maintenance check.',
+            body:
+                'Model indicates possible vehicle health issues — consider a maintenance check.',
           ),
         );
       } else if (label.contains('needs')) {
         items.add(
           const _Recommendation(
-            icon: Icons.build,
+            icon: Icons.build_outlined,
             title: 'Preventive maintenance',
-            body: 'Check air filter, spark plugs, and fuel system for improved combustion.',
+            body:
+                'Check air filter, spark plugs, and fuel system for improved combustion.',
           ),
         );
       }
@@ -453,75 +171,16 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
     if (items.isEmpty) {
       items.add(
         _Recommendation(
-          icon: Icons.insights,
+          icon: Icons.insights_rounded,
           title: score > 400 ? 'High emissions detected' : 'Collect more data',
           body: score > 400
               ? 'Consider checking the vehicle and reviewing driving patterns to reduce emissions.'
-              : 'We’ll refine insights as more readings arrive (aim for 20+).',
+              : 'Insights refine as more readings arrive (aim for 20+).',
         ),
       );
     }
 
-    return Column(
-      children: items
-          .map(
-            (r) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.08),
-                    spreadRadius: 1,
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(r.icon, color: Colors.green[700]),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          r.title,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          r.body,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: Colors.grey[700],
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-          .toList(),
-    );
+    return items;
   }
 
   static String _timeAgo(DateTime dt) {
@@ -531,27 +190,403 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
     if (d.inHours < 1) return '${d.inMinutes}m ago';
     return '${d.inHours}h ago';
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _greenBottom,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [_greenTop, _greenMid, _greenBottom],
+            stops: [0.0, 0.45, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Consumer<DriverScoreProvider>(
+            builder: (context, provider, _) {
+              final history = provider.history;
+              _scheduleRun(history);
+              final needed = (20 - history.length).clamp(0, 20);
+              final progress = (history.length / 20).clamp(0.0, 1.0);
+              final tips = _recommendations(
+                driver: _driver,
+                vehicle: _vehicle,
+                score: provider.driverScore,
+              );
+
+              return RefreshIndicator(
+                color: _textPrimary,
+                backgroundColor: Colors.white,
+                onRefresh: () async {
+                  await provider.fetchHistory();
+                  await _run(provider.history);
+                },
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Insights',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      color: _textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    'On-device ML from live readings',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: _textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_running)
+                              const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          _LiveSummaryCard(
+                            status: provider.status,
+                            statusColor: _statusColor(provider.status),
+                            lastSource: provider.lastRealtimeSource,
+                            score: provider.driverScore,
+                            rawGas: provider.rawGas,
+                            temperature: provider.temperature,
+                            humidity: provider.humidity,
+                            timeAgo: provider.lastRealtimeArrival == null
+                                ? null
+                                : _timeAgo(provider.lastRealtimeArrival!),
+                          ),
+                          const SizedBox(height: 12),
+                          _DataProgressCard(
+                            historyLen: history.length,
+                            needed: needed,
+                            progress: progress,
+                          ),
+                          const SizedBox(height: 18),
+                          _SectionHeader(
+                            icon: Icons.psychology_rounded,
+                            title: 'ML Predictions',
+                            subtitle: 'Based on the last ~80 readings',
+                          ),
+                          const SizedBox(height: 10),
+                          if (_error != null) ...[
+                            _ErrorCard(message: _error!),
+                            const SizedBox(height: 10),
+                          ],
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _PredictionCard(
+                                  title: 'Driver behavior',
+                                  icon: Icons.directions_car_rounded,
+                                  accent: const Color(0xFF43A047),
+                                  soft: const Color(0xFFE8F5E9),
+                                  prediction: _driver,
+                                  isRunning: _running,
+                                  emptyHint: history.length < 20
+                                      ? 'Need $needed more readings'
+                                      : 'Analyzing…',
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _PredictionCard(
+                                  title: 'Vehicle health',
+                                  icon: Icons.health_and_safety_rounded,
+                                  accent: const Color(0xFF039BE5),
+                                  soft: const Color(0xFFE1F5FE),
+                                  prediction: _vehicle,
+                                  isRunning: _running,
+                                  emptyHint: history.length < 20
+                                      ? 'Need $needed more readings'
+                                      : 'Analyzing…',
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          _SectionHeader(
+                            icon: Icons.lightbulb_outline_rounded,
+                            title: 'Suggested actions',
+                            subtitle: 'Personalized from live + ML signals',
+                          ),
+                          const SizedBox(height: 10),
+                          ...tips.map(
+                            (r) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _TipCard(recommendation: r),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _MetricPill extends StatelessWidget {
-  const _MetricPill({
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: const Color(0xFF2E7D32), size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.poppins(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1B5E20),
+                ),
+              ),
+              Text(
+                subtitle,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF558B2F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LiveSummaryCard extends StatelessWidget {
+  const _LiveSummaryCard({
+    required this.status,
+    required this.statusColor,
+    required this.lastSource,
+    required this.score,
+    required this.rawGas,
+    required this.temperature,
+    required this.humidity,
+    required this.timeAgo,
+  });
+
+  final String status;
+  final Color statusColor;
+  final String lastSource;
+  final double score;
+  final double rawGas;
+  final double temperature;
+  final double humidity;
+  final String? timeAgo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFC8E6C9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.1),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.insights_rounded,
+                  color: Color(0xFF2E7D32),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Live summary',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1B5E20),
+                      ),
+                    ),
+                    Text(
+                      'Source: $lastSource'
+                      '${timeAgo == null ? '' : '  ·  $timeAgo'}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF558B2F),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  status.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricTile(
+                  label: 'Emission',
+                  value: score.toStringAsFixed(0),
+                  accent: const Color(0xFF43A047),
+                  soft: const Color(0xFFE8F5E9),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricTile(
+                  label: 'Raw Gas',
+                  value: rawGas.toStringAsFixed(0),
+                  unit: 'ppm',
+                  accent: const Color(0xFF2E7D32),
+                  soft: const Color(0xFFE8F5E9),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricTile(
+                  label: 'Temp',
+                  value: temperature.toStringAsFixed(1),
+                  unit: '°C',
+                  accent: const Color(0xFFFB8C00),
+                  soft: const Color(0xFFFFF3E0),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricTile(
+                  label: 'Humidity',
+                  value: humidity.toStringAsFixed(0),
+                  unit: '%',
+                  accent: const Color(0xFF039BE5),
+                  soft: const Color(0xFFE1F5FE),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({
     required this.label,
     required this.value,
-    required this.unit,
+    required this.accent,
+    required this.soft,
+    this.unit = '',
   });
 
   final String label;
   final String value;
   final String unit;
+  final Color accent;
+  final Color soft;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
+        color: soft,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,18 +594,148 @@ class _MetricPill extends StatelessWidget {
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.white.withOpacity(0.9),
+              fontSize: 11,
               fontWeight: FontWeight.w500,
+              color: accent.withValues(alpha: 0.85),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '$value$unit',
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+          const SizedBox(height: 2),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1B5E20),
+                    height: 1.1,
+                  ),
+                ),
+                if (unit.isNotEmpty)
+                  TextSpan(
+                    text: ' $unit',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: accent,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DataProgressCard extends StatelessWidget {
+  const _DataProgressCard({
+    required this.historyLen,
+    required this.needed,
+    required this.progress,
+  });
+
+  final int historyLen;
+  final int needed;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = historyLen >= 20;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                ready ? Icons.check_circle_rounded : Icons.hourglass_top_rounded,
+                color: ready
+                    ? const Color(0xFF43A047)
+                    : const Color(0xFFFF9800),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  ready
+                      ? 'Ready for ML analysis ($historyLen readings)'
+                      : 'Collecting data · $needed more needed',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1B5E20),
+                  ),
+                ),
+              ),
+              Text(
+                '${(progress * 100).toStringAsFixed(0)}%',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF558B2F),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: const Color(0xFFE8F5E9),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                ready ? const Color(0xFF43A047) : const Color(0xFFFF9800),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFCDD2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded, color: Color(0xFFE53935)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: const Color(0xFFC62828),
+              ),
             ),
           ),
         ],
@@ -584,6 +749,7 @@ class _PredictionCard extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.accent,
+    required this.soft,
     required this.prediction,
     required this.isRunning,
     required this.emptyHint,
@@ -592,6 +758,7 @@ class _PredictionCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color accent;
+  final Color soft;
   final MlPrediction? prediction;
   final bool isRunning;
   final String emptyHint;
@@ -603,16 +770,15 @@ class _PredictionCard extends StatelessWidget {
     final conf = p?.confidence ?? 0.0;
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.08),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: accent.withValues(alpha: 0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -622,67 +788,145 @@ class _PredictionCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: soft,
+                  borderRadius: BorderRadius.circular(11),
                 ),
-                child: Icon(icon, color: accent, size: 20),
+                child: Icon(icon, color: accent, size: 18),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
                   ),
                 ),
               ),
-              if (isRunning) ...[
+              if (isRunning)
                 SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: 14,
+                  height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.green[700],
+                    color: accent,
                   ),
                 ),
-              ],
             ],
           ),
           const SizedBox(height: 14),
-          if (label == null) ...[
+          if (label == null)
             Text(
               emptyHint,
-              style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[700]),
-            ),
-          ] else ...[
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF558B2F),
+                height: 1.35,
+              ),
+            )
+          else ...[
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1B5E20),
+                height: 1.2,
               ),
             ),
             const SizedBox(height: 10),
             ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
                 value: conf.clamp(0.0, 1.0),
-                minHeight: 10,
-                backgroundColor: Colors.grey[200],
+                minHeight: 8,
+                backgroundColor: soft,
                 valueColor: AlwaysStoppedAnimation<Color>(accent),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Confidence ${(conf * 100).toStringAsFixed(0)}%',
-              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+              ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TipCard extends StatelessWidget {
+  const _TipCard({required this.recommendation});
+
+  final _Recommendation recommendation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8F5E9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F5E9),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              recommendation.icon,
+              color: const Color(0xFF2E7D32),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  recommendation.title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1B5E20),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  recommendation.body,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: const Color(0xFF558B2F),
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -700,4 +944,3 @@ class _Recommendation {
   final String title;
   final String body;
 }
-
