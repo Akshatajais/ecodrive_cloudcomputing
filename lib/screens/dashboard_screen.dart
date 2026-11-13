@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/driver_score_provider.dart';
+import '../services/notification_service.dart';
+import '../services/settings_service.dart';
 import '../widgets/driver_score_gauge.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -25,12 +27,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   static const _textPrimary = Color(0xFF1B5E20);
   static const _textSecondary = Color(0xFF558B2F);
 
+  final SettingsService _settingsService = SettingsService();
+  final NotificationService _notificationService = NotificationService();
+  DateTime? _nextPollutionCheck;
+
   @override
   void initState() {
     super.initState();
     _setupAnimations();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DriverScoreProvider>().startListening();
+      _initPollutionReminder();
     });
   }
 
@@ -51,22 +58,76 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.dispose();
   }
 
+  Future<void> _initPollutionReminder() async {
+    await _notificationService.init();
+    var next = await _settingsService.getNextPollutionCheck();
+    if (next == null) {
+      await _settingsService.scheduleNextPollutionCheck();
+      next = await _settingsService.getNextPollutionCheck();
+      if (next != null) {
+        await _notificationService.scheduleReminder(
+          id: next.millisecondsSinceEpoch ~/ 1000,
+          title: 'Pollution Check Reminder',
+          body: 'Time to perform an emission check on your vehicle.',
+          scheduledDate: next,
+        );
+      }
+    }
+    if (!mounted) return;
+    setState(() => _nextPollutionCheck = next);
+  }
+
+  Future<void> _markPollutionCheckDone() async {
+    await _settingsService.scheduleNextPollutionCheck();
+    final next = await _settingsService.getNextPollutionCheck();
+    if (next != null) {
+      await _notificationService.scheduleReminder(
+        id: next.millisecondsSinceEpoch ~/ 1000,
+        title: 'Pollution Check Reminder',
+        body: 'Time to perform an emission check on your vehicle.',
+        scheduledDate: next,
+      );
+    }
+    if (!mounted) return;
+    setState(() => _nextPollutionCheck = next);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Marked done. Next reminder in 40 days.',
+          style: GoogleFonts.poppins(),
+        ),
+        backgroundColor: const Color(0xFF43A047),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _reschedulePollutionCheck() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _nextPollutionCheck ?? now.add(const Duration(days: 40)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked == null) return;
+
+    await _settingsService.setNextPollutionCheck(picked);
+    await _notificationService.scheduleReminder(
+      id: picked.millisecondsSinceEpoch ~/ 1000,
+      title: 'Pollution Check Reminder',
+      body: 'Time to perform an emission check on your vehicle.',
+      scheduledDate: picked,
+    );
+    if (!mounted) return;
+    setState(() => _nextPollutionCheck = picked);
+  }
+
   String _greeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
-  }
-
-  String _insightMessage(String status) {
-    switch (status.toUpperCase()) {
-      case 'GOOD':
-        return 'Emission is at a healthy level.';
-      case 'MODERATE':
-        return 'Emission is at a moderate level.';
-      default:
-        return 'Emission is high — drive carefully.';
-    }
   }
 
   List<double> _recentGasBars(DriverScoreProvider provider) {
@@ -220,8 +281,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ],
                         ),
                         const SizedBox(height: 12),
-                        _InsightCard(
-                          message: _insightMessage(provider.status),
+                        _PollutionReminderCard(
+                          nextCheck: _nextPollutionCheck,
+                          onMarkDone: _markPollutionCheckDone,
+                          onReschedule: _reschedulePollutionCheck,
                         ),
                         if (provider.error != null &&
                             provider.error!.isNotEmpty) ...[
@@ -609,57 +672,75 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _InsightCard extends StatelessWidget {
-  const _InsightCard({required this.message});
+class _PollutionReminderCard extends StatelessWidget {
+  const _PollutionReminderCard({
+    required this.nextCheck,
+    required this.onMarkDone,
+    required this.onReschedule,
+  });
 
-  final String message;
+  final DateTime? nextCheck;
+  final VoidCallback onMarkDone;
+  final VoidCallback onReschedule;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        },
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFFFFF), Color(0xFFF1F8E9)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFC8E6C9)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.green.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+    final daysUntil = nextCheck == null
+        ? 40
+        : nextCheck!.difference(DateTime.now()).inDays.clamp(0, 9999);
+    final isDue = nextCheck != null && daysUntil == 0;
+    final isSoon = daysUntil > 0 && daysUntil <= 7;
+
+    final Color accent;
+    final Color soft;
+    final IconData icon;
+    final String status;
+
+    if (isDue) {
+      accent = const Color(0xFFE53935);
+      soft = const Color(0xFFFFEBEE);
+      icon = Icons.warning_amber_rounded;
+      status = 'Due now';
+    } else if (isSoon) {
+      accent = const Color(0xFFFB8C00);
+      soft = const Color(0xFFFFF3E0);
+      icon = Icons.schedule_rounded;
+      status = 'Due soon';
+    } else {
+      accent = const Color(0xFF43A047);
+      soft = const Color(0xFFE8F5E9);
+      icon = Icons.event_available_rounded;
+      status = 'Scheduled';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: soft),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
           ),
-          child: Row(
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
               Container(
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: soft,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
-                  Icons.eco_rounded,
-                  color: Color(0xFF43A047),
-                  size: 22,
-                ),
+                child: Icon(icon, color: accent, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -667,28 +748,103 @@ class _InsightCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Emission Insight',
+                      'Pollution Check Reminder',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF1B5E20),
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      message,
+                      status,
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color: const Color(0xFF558B2F),
+                        fontWeight: FontWeight.w500,
+                        color: accent,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: Color(0xFF81C784)),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: soft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  isDue ? 'Now' : '$daysUntil d',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+              ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            isDue
+                ? 'Your emission check is due today.'
+                : 'Due in $daysUntil ${daysUntil == 1 ? 'day' : 'days'}'
+                    '${nextCheck == null ? '' : ' · ${DateFormat('MMM dd, yyyy').format(nextCheck!)}'}',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: const Color(0xFF558B2F),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onMarkDone,
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: Text(
+                    'Mark done',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: accent,
+                    side: BorderSide(color: accent.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onReschedule,
+                  icon: const Icon(Icons.calendar_today_rounded, size: 16),
+                  label: Text(
+                    'Reschedule',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
