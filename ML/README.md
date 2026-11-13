@@ -70,7 +70,8 @@ Outputs:
 
 ### How Flutter will feed live readings to TFLite later
 
-- Your Flutter app (already receiving MQTT/Firebase readings) should build a **rolling buffer** of the last \(N\) readings (50–100).
+- Live telemetry is written by `data_generator/generate_telemetry.py` into Firebase (`carEmissions/liveData` + `history`).
+- The Flutter app builds a **rolling buffer** of the last \(N\) readings (50–100) from Firebase.
 - Run the **same feature engineering** as in `ecodrive_ml/features.py` on that buffer to produce a single feature vector per session.
 - Apply the saved preprocessing (scaler + column order) and call the TFLite model.
 

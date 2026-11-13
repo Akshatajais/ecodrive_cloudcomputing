@@ -32,9 +32,9 @@ Below is a clean “recommended set” of figures you can include in a project r
 
 #### Figure 1 — System overview (end-to-end)
 
-**Caption:** EcoDrive system architecture showing ingestion from sensors (MQTT/Firebase), session buffering in the mobile app, on-device feature engineering, TFLite inference, and user-facing insights/recommendations.
+**Caption:** EcoDrive system architecture showing ingestion from the Python data generator via Firebase, session buffering in the mobile app, on-device feature engineering, TFLite inference, and user-facing insights/recommendations.
 
-**Placeholder:** *(Insert a high-level block diagram: Sensors → MQTT/Firebase → Flutter app rolling buffer → Feature extractor → TFLite models → Predictions/Recommendations.)*
+**Placeholder:** *(Insert a high-level block diagram: Python data generator → Firebase → Flutter app rolling buffer → Feature extractor → TFLite models → Predictions/Recommendations.)*
 
 #### Figure 2 — Offline ML training pipeline (recommended “main” diagram)
 

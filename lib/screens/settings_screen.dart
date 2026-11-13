@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../providers/auth_provider.dart';
 import '../providers/driver_score_provider.dart';
 import '../services/settings_service.dart';
 import '../widgets/pollution_insights_section.dart';
@@ -81,8 +82,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Consumer<DriverScoreProvider>(
-        builder: (context, provider, child) {
+      body: Consumer2<DriverScoreProvider, AuthProvider>(
+        builder: (context, provider, auth, child) {
+          final user = auth.user;
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -104,7 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withOpacity(0.3),
+                        color: Colors.green.withValues(alpha: 0.3),
                         spreadRadius: 2,
                         blurRadius: 12,
                         offset: const Offset(0, 4),
@@ -116,7 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -127,13 +129,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Vehicle Monitor',
+                        user?.name.isNotEmpty == true
+                            ? user!.name
+                            : 'Vehicle Monitor',
                         style: GoogleFonts.poppins(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
+                      if (user?.phone.isNotEmpty == true) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          user!.phone,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -141,7 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
@@ -154,7 +168,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              provider.licensePlate,
+                              user?.carNumber.isNotEmpty == true
+                                  ? user!.carNumber
+                                  : provider.licensePlate,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -167,8 +183,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      context.read<DriverScoreProvider>().stopListening();
+                      await auth.logout();
+                    },
+                    icon: const Icon(Icons.logout),
+                    label: Text(
+                      'Logout',
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red[700],
+                      side: BorderSide(color: Colors.red[300]!),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 32),
-                
+
                 // Alert Thresholds Section
                 Row(
                   children: [

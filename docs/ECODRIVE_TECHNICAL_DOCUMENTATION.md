@@ -8,19 +8,19 @@
 
 ## Cover page blurb (copy/paste)
 
-EcoDrive is an end-to-end smart vehicle monitoring system that integrates embedded sensing (ESP32 firmware), cloud data synchronization (Firebase Realtime Database), messaging (MQTT), and a Flutter mobile application with on-device machine learning. The system streams emission-related telemetry, logs historical data, triggers alerts, and provides interpretable insights for both driver behavior and vehicle health. ML models are trained using a Firebase-seeded hybrid pipeline (real historical distributions + realistic synthetic sessions) and deployed as quantized TensorFlow Lite for efficient inference on mobile devices.
+EcoDrive is an end-to-end smart vehicle monitoring system that integrates a Python telemetry data generator, cloud data synchronization (Firebase Realtime Database), and a Flutter mobile application with on-device machine learning. The system streams emission-related telemetry, logs historical data, triggers alerts, and provides interpretable insights for both driver behavior and vehicle health. ML models are trained using a Firebase-seeded hybrid pipeline (real historical distributions + realistic synthetic sessions) and deployed as quantized TensorFlow Lite for efficient inference on mobile devices.
 
 ---
 
 ## Abstract (150–200 words)
 
-Vehicle emissions reflect complex interactions between driver behavior, vehicle condition, and environment; as a result, point-wise thresholds often produce noisy alerts. This project presents EcoDrive, an end-to-end monitoring system combining embedded sensors, cloud synchronization, and mobile analytics with on-device machine learning. An ESP32 firmware module acquires gas and environmental readings, computes an emission score, publishes telemetry via MQTT, and mirrors live and historical data into Firebase Realtime Database. A Flutter application consumes Firebase/MQTT streams to render dashboards, time-series graphs, and alert logs, and runs session-based ML inference locally to estimate driver behavior and vehicle health. The ML pipeline transforms Firebase history into session windows, derives statistical structure, generates realistic synthetic sessions, applies rule-based pseudo-labeling for supervised training, and exports int8 quantized TensorFlow Lite models with consistent preprocessing metadata. The resulting system supports real-time monitoring, historical review, and portable inference, while emphasizing reproducible workflows and clear interfaces between firmware, cloud data paths, and app components.
+Vehicle emissions reflect complex interactions between driver behavior, vehicle condition, and environment; as a result, point-wise thresholds often produce noisy alerts. This project presents EcoDrive, an end-to-end monitoring system combining a Python data generator, cloud synchronization, and mobile analytics with on-device machine learning. A Python script generates realistic gas and environmental readings, computes an emission score, and writes live and historical data into Firebase Realtime Database. A Flutter application consumes Firebase streams to render dashboards, time-series graphs, and alert logs, and runs session-based ML inference locally to estimate driver behavior and vehicle health. The ML pipeline transforms Firebase history into session windows, derives statistical structure, generates realistic synthetic sessions, applies rule-based pseudo-labeling for supervised training, and exports int8 quantized TensorFlow Lite models with consistent preprocessing metadata. The resulting system supports real-time monitoring, historical review, and portable inference, while emphasizing reproducible workflows and clear interfaces between the data generator, cloud data paths, and app components.
 
 ---
 
 ## Keywords
 
-IoT; ESP32; Firebase Realtime Database; MQTT; Flutter; TensorFlow Lite; Quantization; Edge ML; Emission monitoring.
+Cloud computing; Python data generator; Firebase Realtime Database; Flutter; TensorFlow Lite; Quantization; Edge ML; Emission monitoring.
 
 ---
 
@@ -28,13 +28,13 @@ IoT; ESP32; Firebase Realtime Database; MQTT; Flutter; TensorFlow Lite; Quantiza
 
 EcoDrive consists of three major subsystems:
 
-- **Firmware (`iot_code/`)**: ESP32 reads sensors, computes an emission score, and pushes telemetry to MQTT and Firebase.
+- **Data generator (`data_generator/`)**: Python script generates emission telemetry and writes it to Firebase (replaces physical sensors + MQTT).
 - **ML pipeline (`ML/`)**: Python pipeline builds session-based models for driver behavior and vehicle health; exports TFLite artifacts for mobile.
-- **Mobile app (Flutter `lib/`)**: UI + state management, connects to Firebase and MQTT, renders dashboards/graphs/alerts, runs TFLite inference locally, and displays camera stream URLs when available.
+- **Mobile app (Flutter `lib/`)**: UI + state management, connects to Firebase, renders dashboards/graphs/alerts, runs TFLite inference locally, and displays camera stream URLs when available.
 
 ### Data-plane summary
 
-- **Realtime telemetry**: MQTT topic `ecodrive/pollution` (JSON payload).
+- **Realtime telemetry**: Python generator → Firebase `carEmissions/liveData` (JSON object).
 - **Cloud state**: Firebase Realtime Database (RTDB), under the `carEmissions/` namespace.
 
 ---
@@ -43,7 +43,8 @@ EcoDrive consists of three major subsystems:
 
 Top-level structure (key folders):
 
-- `iot_code/` — ESP32 firmware (Arduino-style C++)
+- `data_generator/` — Python telemetry generator (writes Firebase live/history/alerts)
+- `iot_code/` — optional legacy ESP32-CAM firmware only
 - `ML/` — Python ML pipeline, training scripts, and exported models
 - `lib/` — Flutter application code (UI, providers, services)
 - `docs/` — project documentation (this file, plus ML methodology)
@@ -52,24 +53,24 @@ Top-level structure (key folders):
 
 ## 3. Interfaces and data contracts
 
-### 3.1 MQTT contract (firmware → app)
+### 3.1 Telemetry contract (Python data generator → Firebase → app)
 
-- **Broker**: `broker.hivemq.com` (port 1883)
-- **Topic**: `ecodrive/pollution`
-- **Payload**: JSON string with fields:
-  - `rawGas` (int/float)
+- **Producer**: `data_generator/generate_telemetry.py`
+- **Transport**: Firebase Realtime Database writes (no MQTT)
+- **Payload fields** (JSON object):
+  - `rawGas` (float)
   - `temperature` (float)
   - `humidity` (float)
-  - `emissionScore` (int/float)
-
-**Note:** In the current firmware (`iot_code/mainsensor.cpp`), the MQTT payload does **not** include a timestamp; timestamps are written into Firebase as part of `liveData` and `history`. If the app needs a receive-time timestamp for MQTT, it should add it client-side.
+  - `emissionScore` (int)
+  - `timestamp` (string, IST `YYYY-MM-DD HH:MM:SS`)
 
 **Implementation notes**
 
-- Firmware publishes with `PubSubClient` (at-least-once semantics depend on broker/client configuration).
-- Flutter subscribes via `mqtt_client` and emits a broadcast stream of decoded JSON maps.
+- The generator publishes on a fixed interval (default 5 s) into `liveData` and appends the same record under `history`.
+- Scenarios (`eco`, `normal`, `aggressive`, `idle`, `critical`, `mixed`) control noise, spikes, and score range.
+- Flutter listens only to Firebase; no broker subscription is required.
 
-### 3.2 Firebase RTDB schema (firmware/app shared)
+### 3.2 Firebase RTDB schema (generator/app shared)
 
 All project paths are under `carEmissions/`:
 
@@ -80,9 +81,9 @@ All project paths are under `carEmissions/`:
   Historical records keyed by date folder and time key (JSON object).
 
 - `carEmissions/alerts/<alertId>`  
-  Alert records; written when the emission score crosses the threshold. Two alert producers exist:
-  - **Sensor firmware (`iot_code/mainsensor.cpp`)**: writes a small JSON alert when `emissionScore >= 400`.
-  - **ESP32-CAM firmware (`iot_code/cam.cpp`)**: writes alert metadata and stores a JPEG snapshot as a blob under `carEmissions/alerts/<alertId>/image`.
+  Alert records; written when the emission score crosses the threshold. Producers:
+  - **Python data generator**: writes a small JSON alert when `emissionScore >= 400`.
+  - **Optional ESP32-CAM (`iot_code/cam.cpp`)**: can write alert metadata and a JPEG blob under `carEmissions/alerts/<alertId>/image`.
 
 - `carEmissions/camera` *(optional app configuration)*  
   Camera stream configuration used by the Flutter app (`CameraStreamProvider`). This node may be set manually (or by a separate process) and supports:
@@ -91,39 +92,32 @@ All project paths are under `carEmissions/`:
 
 ---
 
-## 4. Firmware subsystem (`iot_code/`)
+## 4. Data generator subsystem (`data_generator/`)
 
-### 4.1 Hardware inputs
+### 4.1 Role
 
-- **MQ-7 gas sensor** on analog pin `MQ7_PIN` (configured as GPIO 34)
-- **DHT22** temperature/humidity sensor on `DHTPIN` (configured as GPIO 4)
-- **I2C LCD** on SDA/SCL configured via `Wire.begin(21, 22)`
+Replaces physical MQ-7 / DHT sensors and MQTT publishing. Generates realistic telemetry locally and pushes it to Firebase so the mobile app and ML history path keep the same schema.
 
-### 4.2 Firmware logic
+### 4.2 Generator logic
 
-Key behaviors in `iot_code/mainsensor.cpp`:
+Key behaviors in `data_generator/generate_telemetry.py`:
 
-- Connect to Wi-Fi using `WIFI_SSID` and `WIFI_PASSWORD`
-- Configure NTP time for timestamps
-- Initialize Firebase client (`Firebase_ESP_Client`)
-- Publish to MQTT (`PubSubClient`)
-- Every `interval = 5000 ms`:
-  - read sensors
-  - compute `emissionScore` using a calibrated mapping
-  - update LCD
+- Load Firebase Admin credentials from `ML/.env`
+- Every `--interval` seconds (default 5):
+  - sample `rawGas`, `temperature`, `humidity` from the selected scenario
+  - compute `emissionScore` using the calibrated mapping
   - write `liveData`, append into `history`, and conditionally write `alerts`
-  - publish MQTT JSON payload
 
 ### 4.3 Emission score computation
 
-The firmware maps raw gas readings into a bounded score:
+The generator maps raw gas readings into a bounded score (same calibration as the former firmware):
 
-- `cleanAir` and `maxSmoke` calibrate the expected raw sensor range.
-- `calculateEmissionScore(rawGas)` maps raw values into approximately `[50, 500]`.
+- `cleanAir = 200` and `maxSmoke = 700` calibrate the expected raw range.
+- Score maps raw values into approximately `[50, 500]`.
 
 ### 4.4 Optional ESP32-CAM support
 
-EcoDrive’s camera capability is implemented as a **separate firmware** for ESP32-CAM:
+Camera capability remains optional via separate firmware:
 
 - **File**: `iot_code/cam.cpp`
 - **Stream endpoint**: `http://<ip>/` (MJPEG stream served by an embedded HTTP server)
@@ -135,11 +129,7 @@ EcoDrive’s camera capability is implemented as a **separate firmware** for ESP
 **Procedure to enable**
 
 - Build/flash `iot_code/cam.cpp` for an ESP32-CAM board (AI Thinker pinmap is included)
-- Ensure the sensor firmware is already publishing `emissionScore` into Firebase (`carEmissions/liveData/emissionScore`)
-
-**Constraint**
-
-- ESP32-CAM pinout may conflict with pins used for LCD/DHT on standard ESP32 boards; treat camera mode as a dedicated build profile.
+- Ensure the Python data generator is already publishing `emissionScore` into Firebase (`carEmissions/liveData/emissionScore`)
 
 ---
 
@@ -150,7 +140,6 @@ EcoDrive’s camera capability is implemented as a **separate firmware** for ESP
 From `pubspec.yaml` (selected):
 
 - `firebase_core`, `firebase_database`, `firebase_storage`
-- `mqtt_client`
 - `provider`
 - `tflite_flutter`
 - `flutter_local_notifications`
@@ -167,17 +156,11 @@ From `pubspec.yaml` (selected):
 `DriverScoreProvider`:
 
 - Connects to Firebase RTDB:
-  - live: `carEmissions/liveData`
+  - live: `carEmissions/liveData` (populated by the Python data generator)
   - alerts: `carEmissions/alerts`
   - history: `carEmissions/history`
-- Connects to MQTT topic `ecodrive/pollution` in parallel and applies updates to the same in-app state.
+- Applies Firebase live updates to in-app state.
 - Maintains a rolling history list (also used by on-device ML inference).
-
-`MqttService`:
-
-- Subscribes to `broker.hivemq.com`
-- Decodes JSON payloads and emits a typed stream of `Map<String, dynamic>`
-- Auto-reconnect behavior enabled
 
 ### 5.4 Camera URL ingestion
 
@@ -263,14 +246,17 @@ Android build:
 
 - `flutter build apk --debug`
 
-### 7.3 Firmware build/flash
+### 7.3 Data generator execution
 
-The firmware is Arduino-style ESP32 code and must be built with:
+From the repository root (with `ML/.env` configured and the `ML` venv activated):
 
-- Arduino IDE + Espressif ESP32 core, or
-- PlatformIO (recommended)
+```bash
+python data_generator/generate_telemetry.py --scenario normal
+```
 
-**Note:** Compiling with desktop `g++` will fail due to missing ESP32 headers (e.g., `WiFi.h`).
+Useful variants: `--scenario mixed`, `--scenario critical`, `--dry-run`, `--count N`.
+
+Optional camera firmware (`iot_code/cam.cpp`) still requires Arduino IDE / PlatformIO if used; it is not part of the default cloud data path.
 
 ### 7.4 ML pipeline execution
 
@@ -285,7 +271,7 @@ From `ML/`:
 
 ## 8. Recommended figures (IEEE-style placeholders)
 
-**Fig. 1. System Architecture.** Sensors + ESP32 firmware, MQTT broker, Firebase RTDB schema, and Flutter app modules (dashboard, graphs, alerts, camera, ML insights).
+**Fig. 1. System Architecture.** Python data generator, Firebase RTDB schema, and Flutter app modules (dashboard, graphs, alerts, camera, ML insights).
 
 *(Placeholder: Insert an end-to-end architecture diagram with data flows and protocols.)*
 
@@ -311,8 +297,8 @@ From `ML/`:
 
 ### 9.1 Reliability and offline behavior
 
-- MQTT and Firebase ingestion run in parallel; the app can continue with whichever is available.
-- When sensors are offline, previously stored Firebase history can still support ML analysis.
+- The Flutter app ingests live telemetry only from Firebase (written by the Python data generator).
+- When the generator is stopped, previously stored Firebase history can still support ML analysis.
 - Camera connectivity is exposed as a URL contract; the app does not depend on a specific camera transport beyond HTTP stream URL availability.
 
 ### 9.2 Security considerations (recommended)

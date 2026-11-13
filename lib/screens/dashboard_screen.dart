@@ -100,13 +100,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.green.withOpacity(0.3),
+                                color: Colors.green.withValues(alpha: 0.3),
                                 blurRadius: 24,
                                 offset: const Offset(0, 10),
                                 spreadRadius: 0,
                               ),
                               BoxShadow(
-                                color: Colors.green.withOpacity(0.1),
+                                color: Colors.green.withValues(alpha: 0.1),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
@@ -118,7 +118,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
+                                  color: Colors.white.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Row(
@@ -160,7 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 'Live IoT dashboard for eco driving insights',
                                 style: GoogleFonts.poppins(
                                   fontSize: 12,
-                                  color: Colors.white.withOpacity(0.95),
+                                  color: Colors.white.withValues(alpha: 0.95),
                                   fontWeight: FontWeight.w500,
                                   letterSpacing: 0.3,
                                 ),

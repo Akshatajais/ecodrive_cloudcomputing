@@ -5,7 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/history_point.dart';
 import '../models/emission_alert.dart';
-import '../services/mqtt_service.dart';
+import '../services/live_telemetry_simulator.dart';
 import '../services/notification_service.dart';
 import '../services/settings_service.dart';
 
@@ -24,9 +24,7 @@ class DriverScoreProvider with ChangeNotifier {
 
   StreamSubscription<DatabaseEvent>? _liveSubscription;
   StreamSubscription<DatabaseEvent>? _alertsSubscription;
-  StreamSubscription<Map<String, dynamic>>? _mqttSubscription;
-
-  final MqttService _mqttService = MqttService();
+  LiveTelemetrySimulator? _simulator;
 
   double _driverScore = 0.0;
   double _rawGas = 0.0;
@@ -92,20 +90,17 @@ class DriverScoreProvider with ChangeNotifier {
     final hasDatabase = await _ensureDatabase();
     if (!hasDatabase) return;
 
-    // MQTT is a parallel real-time layer; Firebase logic remains unchanged.
-    await _startMqtt();
-
     _liveRef ??= _databaseRef!.child('carEmissions/liveData');
     _alertsRef ??= _databaseRef!.child('carEmissions/alerts');
 
     _listenToAlerts();
 
+    // App reads ONLY from Firebase. UI updates happen exclusively here.
     _liveSubscription?.cancel();
     _liveSubscription = _liveRef!.onValue.listen(
       (event) {
         final data = event.snapshot.value;
         if (data == null) {
-          _setMockData('No live data found. Showing demo data.');
           return;
         }
         _debugLogSource(
@@ -119,36 +114,19 @@ class DriverScoreProvider with ChangeNotifier {
         _setMockData('Firebase error: $error. Showing demo data.');
       },
     );
+
+    // Generator pushes into Firebase first; the listener above updates the UI.
+    _startFirebaseWriter();
   }
 
-  Future<void> _startMqtt() async {
-    try {
-      await _mqttService.connectAndSubscribe(
-        clientId: 'ecodrive_flutter_${DateTime.now().millisecondsSinceEpoch}',
-        topic: 'ecodrive/pollution',
-      );
-
-      await _mqttSubscription?.cancel();
-      _mqttSubscription = _mqttService.messages.listen(
-        (data) {
-          _debugLogSource(
-            source: 'MQTT',
-            event: 'MQTT update received',
-            payload: data,
-          );
-          _applyRealtimeData(data, source: 'MQTT');
-        },
-        onError: (e) {
-          // Keep Firebase behavior untouched; just surface MQTT issues as info.
-          _error = 'MQTT error: $e';
-          notifyListeners();
-        },
-      );
-    } catch (e) {
-      // If MQTT is unavailable, app continues using Firebase as before.
-      _error = 'MQTT connection failed: $e';
-      notifyListeners();
-    }
+  void _startFirebaseWriter() {
+    if (_simulator?.isRunning == true) return;
+    _simulator?.stop();
+    _simulator = LiveTelemetrySimulator(
+      interval: const Duration(seconds: 3),
+      scenario: 'mixed',
+    );
+    _simulator!.start();
   }
 
   Future<void> fetchHistory() async {
@@ -402,10 +380,13 @@ class DriverScoreProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Shared carEmissions/alerts path is preserved for existing ML/app flows.
+      // Optional ownerUid links the event to the signed-in user when available.
       await _alertsRef?.push().set({
         'emissionScore': emissionScore,
         'timestamp': timestamp.toIso8601String(),
         'message': message,
+        if (_licensePlate.isNotEmpty) 'vehicleNumber': _licensePlate,
       });
     } catch (_) {
       // ignore write failures for now
@@ -432,19 +413,17 @@ class DriverScoreProvider with ChangeNotifier {
   }
 
   void stopListening() {
+    _simulator?.stop();
+    _simulator = null;
     _liveSubscription?.cancel();
     _liveSubscription = null;
     _alertsSubscription?.cancel();
     _alertsSubscription = null;
-    _mqttSubscription?.cancel();
-    _mqttSubscription = null;
-    _mqttService.disconnect();
   }
 
   @override
   void dispose() {
     stopListening();
-    _mqttService.dispose();
     super.dispose();
   }
 }

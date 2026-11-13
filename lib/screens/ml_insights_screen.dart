@@ -33,7 +33,7 @@ class _MlInsightsScreenState extends State<MlInsightsScreen> {
     _initFuture = _ml.init();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Pull some historical data early so the ML page can analyze immediately.
-      // Live MQTT/Firebase updates will continue populating the rolling buffer.
+      // Live Firebase updates (from the Python data generator) keep filling the buffer.
       try {
         await context.read<DriverScoreProvider>().fetchHistory();
       } catch (_) {

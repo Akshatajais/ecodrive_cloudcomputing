@@ -2,28 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/alerts_screen.dart';
-import 'screens/graphs_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/ml_insights_screen.dart';
-import 'screens/camera_feed_screen.dart';
+
+import 'firebase_options.dart';
+import 'providers/auth_provider.dart';
 import 'providers/driver_score_provider.dart';
-import 'providers/alert_gallery_provider.dart';
+import 'screens/alerts_screen.dart';
+import 'screens/auth_gate.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/graphs_screen.dart';
+import 'screens/ml_insights_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase
-  // Note: You'll need to add firebase_options.dart after running:
-  // flutterfire configure
+
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (e) {
-    // If Firebase is not configured, the app will use mock data
-    debugPrint('Firebase initialization error: $e');
+    // Fallback for environments where options already initialized.
+    debugPrint('Firebase initialization: $e');
+    try {
+      await Firebase.initializeApp();
+    } catch (_) {}
   }
-  
+
   runApp(const SmartVehicleEmissionMonitorApp());
 }
 
@@ -34,8 +38,8 @@ class SmartVehicleEmissionMonitorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DriverScoreProvider()),
-        ChangeNotifierProvider(create: (_) => AlertGalleryProvider()),
       ],
       child: MaterialApp(
         title: 'EcoDrive',
@@ -67,7 +71,7 @@ class SmartVehicleEmissionMonitorApp extends StatelessWidget {
             ),
           ),
         ),
-        home: const MainNavigationScreen(),
+        home: const AuthGate(home: MainNavigationScreen()),
       ),
     );
   }
@@ -85,7 +89,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = [
     const DashboardScreen(),
-    const CameraFeedScreen(),
     const AlertsScreen(),
     const GraphsScreen(),
     const MlInsightsScreen(),
@@ -103,7 +106,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withValues(alpha: 0.2),
               spreadRadius: 1,
               blurRadius: 8,
               offset: const Offset(0, -2),
@@ -128,10 +131,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             BottomNavigationBarItem(
               icon: Icon(Icons.dashboard),
               label: 'Dashboard',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.photo_library),
-              label: 'Snapshots',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.notifications),
