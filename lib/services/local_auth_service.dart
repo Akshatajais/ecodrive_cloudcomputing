@@ -86,6 +86,9 @@ class LocalAuthService {
     if (username.isEmpty) {
       throw StateError('Phone number is required');
     }
+    if (username.length != 10 || int.tryParse(username) == null) {
+      throw StateError('Phone number must be 10 digits');
+    }
     if (password.length < 4) {
       throw StateError('Password must be at least 4 characters');
     }

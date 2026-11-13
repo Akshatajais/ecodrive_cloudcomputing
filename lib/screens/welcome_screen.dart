@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -367,14 +368,22 @@ class _LoginForm extends StatelessWidget {
         children: [
           TextFormField(
             controller: usernameCtrl,
-            keyboardType: TextInputType.phone,
+            keyboardType: TextInputType.number,
             textInputAction: TextInputAction.next,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
             decoration: authFieldDecoration(
-              hint: 'Phone number',
+              hint: 'Phone number (10 digits)',
               icon: Icons.phone_outlined,
             ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Enter phone number' : null,
+            validator: (v) {
+              final digits = (v ?? '').trim();
+              if (digits.isEmpty) return 'Enter phone number';
+              if (digits.length != 10) return 'Enter a 10-digit phone number';
+              return null;
+            },
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -537,17 +546,20 @@ class _RegisterForm extends StatelessWidget {
           const SizedBox(height: 12),
           TextFormField(
             controller: phoneCtrl,
-            keyboardType: TextInputType.phone,
+            keyboardType: TextInputType.number,
             textInputAction: TextInputAction.next,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
             decoration: authFieldDecoration(
-              hint: 'Phone number',
+              hint: 'Phone number (10 digits)',
               icon: Icons.phone_outlined,
             ),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Enter phone';
-              if (v.replaceAll(RegExp(r'\D'), '').length < 8) {
-                return 'Enter a valid phone number';
-              }
+              final digits = (v ?? '').trim();
+              if (digits.isEmpty) return 'Enter phone';
+              if (digits.length != 10) return 'Enter a 10-digit phone number';
               return null;
             },
           ),
